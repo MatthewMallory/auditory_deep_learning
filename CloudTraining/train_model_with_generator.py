@@ -10,7 +10,7 @@ from sklearn.metrics import confusion_matrix,accuracy_score
 
 
 from models.models import get_model
-
+from utils.data_gen import groovy_data_generator
 """
 model_options:
 
@@ -23,46 +23,12 @@ model_options:
     simple_cnn   --    a simple/vanilla cnn
 
 """
-
-LOCATION = "local"
+TRAIN_LOCATION = "local"
 MODEL = "simple_cnn"
 BATCH_SIZE = 32
+INPUT_IMAGE_SHAPE = (128,647,1)
+NUM_LABELS = 8 #num genres
 EPOCHS = 2
-
-def load_data(location):
-    print("Loading Data From {}...".format(location))
-    if location == 'local':
-        data = np.load("/home/matt/audio_deep_learning/Data/FMA_Small_Spectrogram_Data.npy")
-        labels = np.load("/home/matt/audio_deep_learning/Data/FMA_Small_Spectrogram_Data_Labels.npy")
-
-        pth = "/home/matt/audio_deep_learning/Genre_Track_Id_Dict.json"
-        with open(pth, "rb") as l:
-            numerical_labels = json.load(l)
-
-
-    else:
-        fs = s3fs.S3FileSystem() 
-        with fs.open("spectrogramdatabucket/Spectrogram_Data_Labels.npy") as f:
-            labels = np.load(f)
-        with fs.open("spectrogramdatabucket/Spectrogram_Data.npy") as d:
-            data = np.load(d)
-
-        pth = "spectrogramdatabucket/Genre_Track_Id_Dict.json" 
-        with fs.open(pth,"rb") as l:
-            numerical_labels = json.load(l)
-
-
-    X_train, X_test, y_train, y_test = train_test_split(data, labels, test_size=0.30, shuffle=True)
-    X_train = X_train.reshape(X_train.shape[0], 128, 647, 1)
-    X_test = X_test.reshape(X_test.shape[0], 128, 647, 1)
-
-    X_test, X_val, y_test, y_val = train_test_split(X_test, y_test, test_size=0.35, shuffle=True)
-
-    print("Training Shape: {} ... {}".format(X_train.shape,y_train.shape))
-    print("Testing Shape: {} ... {}".format(X_test.shape,y_test.shape))
-    print("Validation Shape: {} ... {}".format(X_val.shape,y_val.shape))
-
-    return X_train, y_train, X_test, y_test, X_val, y_val, numerical_labels
 
 
 def main():
@@ -71,22 +37,35 @@ def main():
     if not os.path.exists(odir):
         os.mkdir(odir)
 
-    loss_acc_plot_path = os.path.join(odir,"{}_accuracy_loss_plots.pdf".format(MODEL))
-    confusion_mat_plot_outpath = os.path.join(odir,"{}_validation_confusion_matrix_heatmap.pdf".format(MODEL))
-    confusion_mat_outpath = os.path.join(odir,"{}_validation_confusion_matrix.npy".format(MODEL))
+    if TRAIN_LOCATION == "local":
+        train_dir = "/home/matt/audio_deep_learning/Data/fma_small_augmented_single_files/TrainDir"
+        test_dir = "/home/matt/audio_deep_learning/Data/fma_small_augmented_single_files/TestDir"
+        val_dir = "/home/matt/audio_deep_learning/Data/fma_small_augmented_single_files/ValDir"
+        num_val_samples = len(os.listdir(val_dir))
 
-    X_train, y_train, X_test, y_test, X_val, y_val,numerical_labels = load_data(LOCATION)
+        pth = "/home/matt/audio_deep_learning/Genre_Track_Id_Dict.json"
+        with open(pth, "rb") as l:
+            numerical_labels = json.load(l)
 
+    else:
+        fs = s3fs.S3FileSystem() 
+        train_dir = "spectrogramdatabucket/TrainDir"
+        test_dir = "spectrogramdatabucket/TestDir"
+        val_dir =  "spectrogramdatabucket/ValDir"
+        num_val_samples = len(fs.ls(val_dir))
 
-    # X_train = X_train[0:1000,:,:,:]
-    # y_train = y_train[0:1000]
-    model = get_model(model_name = MODEL, input_shape = (X_train.shape[1], X_train.shape[2], X_train.shape[3]) )
+        pth = "spectrogramdatabucket/Genre_Track_Id_Dict.json" 
+        with fs.open(pth,"rb") as l:
+            numerical_labels = json.load(l)
 
+    train_generator = groovy_data_generator(image_dir=train_dir, batch_size=BATCH_SIZE, image_size = INPUT_IMAGE_SHAPE, num_unique_labels = NUM_LABELS, train_location=TRAIN_LOCATION)
+    test_generator = groovy_data_generator(image_dir=test_dir, batch_size=BATCH_SIZE, image_size = INPUT_IMAGE_SHAPE, num_unique_labels = NUM_LABELS, train_location=TRAIN_LOCATION)
 
-    history = model.fit(X_train,
-                        y_train, 
+    model = get_model(model_name = MODEL, input_shape = INPUT_IMAGE_SHAPE )
+
+    history = model.fit(train_generator, 
                         batch_size=BATCH_SIZE,
-                        validation_data=(X_test, y_test),
+                        validation_data=test_generator,
                         epochs=EPOCHS)
     
     #Save model
@@ -94,6 +73,11 @@ def main():
                                 "{}/{}_model_output".format(MODEL,MODEL), 
                                 overwrite=True,
                                 include_optimizer=True)
+
+    #Create Outfile Variables
+    loss_acc_plot_path = os.path.join(odir,"{}_accuracy_loss_plots.pdf".format(MODEL))
+    confusion_mat_plot_outpath = os.path.join(odir,"{}_validation_confusion_matrix_heatmap.pdf".format(MODEL))
+    confusion_mat_outpath = os.path.join(odir,"{}_validation_confusion_matrix.npy".format(MODEL))
 
     #Save plots
     acc = history.history['accuracy']
@@ -116,6 +100,7 @@ def main():
     plt.clf()
 
     #Save confmat
+    X_val, y_val = groovy_data_generator(image_dir=val_dir, batch_size=num_val_samples, image_size = INPUT_IMAGE_SHAPE, num_unique_labels = NUM_LABELS, train_location=TRAIN_LOCATION).__getitem__(0)
     predictions_arr = model.predict(X_val, verbose=1)
     conf_matrix = confusion_matrix(np.argmax(y_val, 1), np.argmax(predictions_arr, 1),normalize='true')
     acc = accuracy_score(np.argmax(y_val, 1), np.argmax(predictions_arr, 1))
