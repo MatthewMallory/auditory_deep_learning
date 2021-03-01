@@ -1,16 +1,16 @@
 import numpy as np 
+import tensorflow as tf
+from tensorflow.python.keras import utils
 from tensorflow.python.keras.models import Model, Sequential
 from tensorflow.python.keras.layers import (Dense, Dropout, Flatten, Conv2D, MaxPooling2D,
                                             BatchNormalization, Input, concatenate, GlobalAveragePooling2D,
                                            Convolution2D,Activation,AveragePooling2D, concatenate, GRU, Permute, Reshape)
-from tensorflow.python.keras import utils
-import tensorflow as tf
 
 LOSS = 'categorical_crossentropy'
 OPTIMIZER = 'adam'
 METRICS = ['accuracy']
 
-def get_model(model_name,input_shape):
+def get_model(model_name,input_shape,num_classes):
     """
     Will load a compiled model. Names and details described below. Input shape should be (x,y,depth) tuple
     
@@ -30,7 +30,7 @@ def get_model(model_name,input_shape):
                   "simple_cnn":simple_cnn
                   }
     model_func = model_dict[model_name]
-    model = model_func(input_shape=input_shape)
+    model = model_func(input_shape=input_shape, num_classes= num_classes)
     
     return model
 
@@ -194,13 +194,13 @@ Models
 """
 ########################################################################################################
 
-def multi_scale_level_cnn_model(input_shape=(128,647,1), num_dense_blocks=3, num_conv_filters=32, num_classes=8):
+def multi_scale_level_cnn_model(input_shape, num_classes, num_dense_blocks=3, num_conv_filters=32):
     model_input = Input(shape=input_shape)
     
     x = Convolution2D(num_conv_filters, 3, padding='same')(model_input)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
-    x = MaxPooling2D(pool_size=(4, 1))(x)
+    x = MaxPooling2D(pool_size=(4, 1))(x) #changed from 4,1 to 1,4 
     
     x = dense_block(num_dense_blocks, num_conv_filters)(x)
     x = transition_block(num_conv_filters)(x)
@@ -219,10 +219,10 @@ def multi_scale_level_cnn_model(input_shape=(128,647,1), num_dense_blocks=3, num
 
     return model
 
-def bottom_up_broadcast_model(input_shape):
+def bottom_up_broadcast_model(input_shape,num_classes):
     visible = Input(shape=input_shape)
     output = broadcast_module(visible,input_shape)
-    dense_out = Dense(8, activation = 'softmax')(output)
+    dense_out = Dense(num_classes, activation = 'softmax')(output)
 
     model = Model(inputs=visible, outputs = dense_out)
     model.compile(loss=LOSS,
@@ -231,13 +231,13 @@ def bottom_up_broadcast_model(input_shape):
 
     return model
 
-def bottom_up_broadcast_crnn_model(input_shape):
+def bottom_up_broadcast_crnn_model(input_shape,num_classes):
 
     visible = Input(shape=input_shape)
     rcnn_res = crnn_module(visible)
     broadcast_res = broadcast_module(visible, input_shape)
     both_modules = concatenate([rcnn_res,broadcast_res])
-    out = Dense(8, activation="softmax")(both_modules)
+    out = Dense(num_classes, activation="softmax")(both_modules)
 
     model = Model(inputs=visible, outputs=out)
 
@@ -247,7 +247,7 @@ def bottom_up_broadcast_crnn_model(input_shape):
 
     return model
 
-def simple_cnn(input_shape):
+def simple_cnn(input_shape,num_classes):
 
     cnn_model = Sequential(name='cnn_simple')
     # Adding convolutional layer
@@ -277,7 +277,7 @@ def simple_cnn(input_shape):
     cnn_model.add(Dense(64, activation='relu'))
 
     # Adding an output layer
-    cnn_model.add(Dense(8, activation='softmax'))
+    cnn_model.add(Dense(num_classes, activation='softmax'))
 
     # Compiling our neural network
     cnn_model.compile(loss=LOSS,

@@ -10,7 +10,6 @@ from sklearn.metrics import confusion_matrix,accuracy_score
 
 
 from models.models import get_model
-
 """
 model_options:
 
@@ -25,36 +24,38 @@ model_options:
 """
 
 LOCATION = "local"
-MODEL = "simple_cnn"
-BATCH_SIZE = 32
-EPOCHS = 2
+MODEL = "multi_scale_level_cnn_model"
+BATCH_SIZE = 8
+EPOCHS = 20
+INPUT_IMAGE_SHAPE = (647,128, 1)
+DATASET = "gtzan_raw" # choose from ["fma_all_augmentations",    "gtzan_raw"      , "gtzan_augmented_without_dropout"     , "gtzan_augmented_with_dropout"   ]
 
-def load_data(location):
+def load_data(location,DATASET):
     print("Loading Data From {}...".format(location))
     if location == 'local':
-        data = np.load("/home/matt/audio_deep_learning/Data/FMA_Small_Spectrogram_Data.npy")
-        labels = np.load("/home/matt/audio_deep_learning/Data/FMA_Small_Spectrogram_Data_Labels.npy")
+        data = np.load(f"/home/matt/audio_deep_learning/Data/{DATASET}/Data.npy")
+        labels = np.load(f"/home/matt/audio_deep_learning/Data/{DATASET}/Labels.npy")
 
-        pth = "/home/matt/audio_deep_learning/Genre_Track_Id_Dict.json"
-        with open(pth, "rb") as l:
-            numerical_labels = json.load(l)
+        pth = "/home/matt/audio_deep_learning/Data/All_DataSets_Genre_Labels.json"
+        with open(pth, "r") as l:
+            numerical_labels = json.load(l)[DATASET]
 
 
     else:
         fs = s3fs.S3FileSystem() 
-        with fs.open("spectrogramdatabucket/Spectrogram_Data_Labels.npy") as f:
+        with fs.open(f"spectrogramdatabucket/{DATASET}/Labels.npy") as f:
             labels = np.load(f)
-        with fs.open("spectrogramdatabucket/Spectrogram_Data.npy") as d:
+        with fs.open(f"spectrogramdatabucket/{DATASET}/Data.npy") as d:
             data = np.load(d)
 
-        pth = "spectrogramdatabucket/Genre_Track_Id_Dict.json" 
-        with fs.open(pth,"rb") as l:
-            numerical_labels = json.load(l)
+        pth = "spectrogramdatabucket/All_DataSets_Genre_Labels.json" 
+        with fs.open(pth,"r") as l:
+            numerical_labels = json.load(l)[DATASET]
 
 
     X_train, X_test, y_train, y_test = train_test_split(data, labels, test_size=0.30, shuffle=True)
-    X_train = X_train.reshape(X_train.shape[0], 128, 647, 1)
-    X_test = X_test.reshape(X_test.shape[0], 128, 647, 1)
+    X_train = X_train.reshape(X_train.shape[0], INPUT_IMAGE_SHAPE[0], INPUT_IMAGE_SHAPE[1],  INPUT_IMAGE_SHAPE[2])
+    X_test = X_test.reshape(X_test.shape[0], INPUT_IMAGE_SHAPE[0],  INPUT_IMAGE_SHAPE[1], INPUT_IMAGE_SHAPE[2])
 
     X_test, X_val, y_test, y_val = train_test_split(X_test, y_test, test_size=0.35, shuffle=True)
 
@@ -67,7 +68,10 @@ def load_data(location):
 
 def main():
 
-    odir = MODEL
+    if not os.path.exists("Outdir"):
+        os.mkdir("Outdir")
+
+    odir = "Outdir/{}_{}".format(MODEL,DATASET)
     if not os.path.exists(odir):
         os.mkdir(odir)
 
@@ -75,12 +79,10 @@ def main():
     confusion_mat_plot_outpath = os.path.join(odir,"{}_validation_confusion_matrix_heatmap.pdf".format(MODEL))
     confusion_mat_outpath = os.path.join(odir,"{}_validation_confusion_matrix.npy".format(MODEL))
 
-    X_train, y_train, X_test, y_test, X_val, y_val,numerical_labels = load_data(LOCATION)
+    X_train, y_train, X_test, y_test, X_val, y_val,numerical_labels = load_data(LOCATION,DATASET)
 
-
-    # X_train = X_train[0:1000,:,:,:]
-    # y_train = y_train[0:1000]
-    model = get_model(model_name = MODEL, input_shape = (X_train.shape[1], X_train.shape[2], X_train.shape[3]) )
+    num_labels = len(numerical_labels.keys())
+    model = get_model(model_name = MODEL, input_shape = INPUT_IMAGE_SHAPE, num_classes = num_labels)
 
 
     history = model.fit(X_train,
@@ -91,7 +93,7 @@ def main():
     
     #Save model
     tf.keras.models.save_model(model,
-                                "{}/{}_model_output".format(MODEL,MODEL), 
+                                "{}/{}_model_output".format(odir,MODEL), 
                                 overwrite=True,
                                 include_optimizer=True)
 

@@ -1,12 +1,11 @@
-import ntpath
-import  keras
-import numpy as np
 import os 
-import random 
 import s3fs
-
+import ntpath
+import random 
+import numpy as np
+import tensorflow as tf
     
-class groovy_data_generator(keras.utils.Sequence):
+class groovy_data_generator(tf.keras.utils.Sequence):
 
     def __init__(self, batch_size, image_dir, train_location, image_size, num_unique_labels, fs=None) :
         """
@@ -20,7 +19,7 @@ class groovy_data_generator(keras.utils.Sequence):
             self.image_filenames = [os.path.join(image_dir,fname) for fname in os.listdir(image_dir)]
         else:
             self.fs = s3fs.S3FileSystem() 
-            self.image_filenames = [image_dir+ fname for fname in self.fs.ls(image_dir)]
+            self.image_filenames = [fname for fname in self.fs.ls(image_dir)]
         random.shuffle(self.image_filenames)
 
         self.batch_size = batch_size

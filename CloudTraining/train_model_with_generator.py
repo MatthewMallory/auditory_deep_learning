@@ -24,60 +24,70 @@ model_options:
 
 """
 TRAIN_LOCATION = "local"
-MODEL = "simple_cnn"
+MODEL = "multi_scale_level_cnn_model"
+DATASET = "gtzan_raw" # choose from ["fma_all_augmentations",    "gtzan_raw"      , "gtzan_augmented_without_dropout"     , "gtzan_augmented_with_dropout"   ]
 BATCH_SIZE = 32
 INPUT_IMAGE_SHAPE = (128,647,1)
-NUM_LABELS = 8 #num genres
-EPOCHS = 2
+EPOCHS = 30
 
 
 def main():
-
-    odir = MODEL
+    if not os.path.exists("Outdir"):
+        os.mkdir("Outdir")
+    odir = "Outdir/{}_{}".format(MODEL,DATASET)
+    #Create Outfile Variables
     if not os.path.exists(odir):
         os.mkdir(odir)
 
-    if TRAIN_LOCATION == "local":
-        train_dir = "/home/matt/audio_deep_learning/Data/fma_small_augmented_single_files/TrainDir"
-        test_dir = "/home/matt/audio_deep_learning/Data/fma_small_augmented_single_files/TestDir"
-        val_dir = "/home/matt/audio_deep_learning/Data/fma_small_augmented_single_files/ValDir"
-        num_val_samples = len(os.listdir(val_dir))
-
-        pth = "/home/matt/audio_deep_learning/Genre_Track_Id_Dict.json"
-        with open(pth, "rb") as l:
-            numerical_labels = json.load(l)
-
-    else:
-        fs = s3fs.S3FileSystem() 
-        train_dir = "spectrogramdatabucket/TrainDir"
-        test_dir = "spectrogramdatabucket/TestDir"
-        val_dir =  "spectrogramdatabucket/ValDir"
-        num_val_samples = len(fs.ls(val_dir))
-
-        pth = "spectrogramdatabucket/Genre_Track_Id_Dict.json" 
-        with fs.open(pth,"rb") as l:
-            numerical_labels = json.load(l)
-
-    train_generator = groovy_data_generator(image_dir=train_dir, batch_size=BATCH_SIZE, image_size = INPUT_IMAGE_SHAPE, num_unique_labels = NUM_LABELS, train_location=TRAIN_LOCATION)
-    test_generator = groovy_data_generator(image_dir=test_dir, batch_size=BATCH_SIZE, image_size = INPUT_IMAGE_SHAPE, num_unique_labels = NUM_LABELS, train_location=TRAIN_LOCATION)
-
-    model = get_model(model_name = MODEL, input_shape = INPUT_IMAGE_SHAPE )
-
-    history = model.fit(train_generator, 
-                        batch_size=BATCH_SIZE,
-                        validation_data=test_generator,
-                        epochs=EPOCHS)
-    
-    #Save model
-    tf.keras.models.save_model(model,
-                                "{}/{}_model_output".format(MODEL,MODEL), 
-                                overwrite=True,
-                                include_optimizer=True)
-
-    #Create Outfile Variables
     loss_acc_plot_path = os.path.join(odir,"{}_accuracy_loss_plots.pdf".format(MODEL))
     confusion_mat_plot_outpath = os.path.join(odir,"{}_validation_confusion_matrix_heatmap.pdf".format(MODEL))
     confusion_mat_outpath = os.path.join(odir,"{}_validation_confusion_matrix.npy".format(MODEL))
+
+
+    if TRAIN_LOCATION == "local":
+        train_dir = "/home/matt/audio_deep_learning/Data/{}/TrainDir".format(DATASET)
+        test_dir = "/home/matt/audio_deep_learning/Data/{}/TestDir".format(DATASET)
+        val_dir = "/home/matt/audio_deep_learning/Data/{}/ValDir".format(DATASET)
+        num_val_samples = len(os.listdir(val_dir))
+
+        pth = "/home/matt/audio_deep_learning/Data/All_DataSets_Genre_Labels.json"
+        with open(pth, "r") as l:
+            numerical_labels = json.load(l)[DATASET]
+
+    else:
+        fs = s3fs.S3FileSystem() 
+        train_dir = "spectrogramdatabucket/{}/TrainDir".format(DATASET)
+        test_dir = "spectrogramdatabucket/{}/TestDir".format(DATASET)
+        val_dir =  "spectrogramdatabucket/{}/ValDir".format(DATASET)
+        num_val_samples = len(fs.ls(val_dir))
+
+        pth = "spectrogramdatabucket/All_DataSets_Genre_Labels.json" 
+        with fs.open(pth,"r") as l:
+            numerical_labels = json.load(l)[DATASET]
+
+
+    num_labels = len(numerical_labels.keys())
+    train_generator = groovy_data_generator(image_dir=train_dir, batch_size=BATCH_SIZE, image_size = INPUT_IMAGE_SHAPE, num_unique_labels = num_labels, train_location=TRAIN_LOCATION)
+    test_generator = groovy_data_generator(image_dir=test_dir, batch_size=BATCH_SIZE, image_size = INPUT_IMAGE_SHAPE, num_unique_labels = num_labels, train_location=TRAIN_LOCATION)
+
+    model = get_model(model_name = MODEL, input_shape = INPUT_IMAGE_SHAPE, num_classes = num_labels)
+
+    if TRAIN_LOCATION == 'local':
+        history = model.fit(train_generator, 
+                            batch_size=BATCH_SIZE,
+                            validation_data=test_generator,
+                            epochs=EPOCHS)
+    else:
+        #when using aws ML image, the TF version complains if you have a batch size argument while using a data generator.
+        history = model.fit(train_generator,
+                    validation_data=test_generator,
+                    epochs=EPOCHS)
+    
+    #Save model
+    tf.keras.models.save_model(model,
+                                "{}/{}_model_output".format(odir,MODEL), 
+                                overwrite=True,
+                                include_optimizer=True)
 
     #Save plots
     acc = history.history['accuracy']
@@ -100,7 +110,7 @@ def main():
     plt.clf()
 
     #Save confmat
-    X_val, y_val = groovy_data_generator(image_dir=val_dir, batch_size=num_val_samples, image_size = INPUT_IMAGE_SHAPE, num_unique_labels = NUM_LABELS, train_location=TRAIN_LOCATION).__getitem__(0)
+    X_val, y_val = groovy_data_generator(image_dir=val_dir, batch_size=num_val_samples, image_size = INPUT_IMAGE_SHAPE, num_unique_labels = num_labels, train_location=TRAIN_LOCATION).__getitem__(0)
     predictions_arr = model.predict(X_val, verbose=1)
     conf_matrix = confusion_matrix(np.argmax(y_val, 1), np.argmax(predictions_arr, 1),normalize='true')
     acc = accuracy_score(np.argmax(y_val, 1), np.argmax(predictions_arr, 1))
