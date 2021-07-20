@@ -12,8 +12,6 @@ With a considerably small dataset, data augmentation was used as described in [b
 
 The model was trained to minimize categorical cross-entropy between the predictions and truthful genre labels using ADAM optimizer. A batch size of 8 was used for 100 epochs in the training process. The initial learning rate was set to 0.01 and automatically decrease by a factor of 0.5 when the loss has stopped improving after 3 epochs. Training, testing and validation sets were randomly partitioned following 8-1-1 proportions. Data was hosted on AWS and training was carried out on an ec2 cluster. The figures below show the training and validation loss curves and validation confusion matrix. 
 
-![training and loss curves](https://github.com/MatthewMallory/auditory_deep_learning/blob/main/Figures/acc_loss_plots.pdf)
-
 ![validation confusion matrix](https://github.com/MatthewMallory/auditory_deep_learning/blob/main/Figures/genre_conf_mat.pdf)
 
-
+![training and loss curves](https://github.com/MatthewMallory/auditory_deep_learning/blob/main/Figures/acc_loss_plots.pdf)
