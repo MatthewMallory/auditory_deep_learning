@@ -1,4 +1,4 @@
-This repository aims to present a novel solution to music genre classification with deep learning. Through transfer learning we can use this neural network to organize a users' saved music library into discrete clusters. From here, it will be possible to use this method as a content based music recomendation system as compared to collaborative filtering methods. 
+This repository aims to present a novel solution to music genre classification with deep learning. Will try to use this neural network to organize a users' saved music library into discrete clusters. From here, it will be possible to use this method as a content based music recomendation system as compared to collaborative filtering methods. 
 
 **Network Architecture**
 The neural network architecture developed here was influenced strongly by the work done by [Liu et al](https://link.springer.com/article/10.1007/s11042-020-09643-6). In this work a convolution network architecture combining [dense connectivity](https://arxiv.org/abs/1608.06993) and [inception blocks](https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/43022.pdf) was presented as a bottom up broadcast neural network. This network architecture takes multi-scale time-frequency information into consideration which creates semantic features for the decision layer to descriminate genre of an unknown music clip. The architecture network is shown below (Liu et al.)
@@ -20,5 +20,3 @@ The model was trained to minimize categorical cross-entropy between the predicti
 
 ![validation confusion matrix](https://github.com/MatthewMallory/auditory_deep_learning/blob/main/Figures/genre_conf_mat.png)
 
-
-tldr: Created convolution network to classify music genres with 92.7% accuracy. Used transfer learning to extract features from songs that do not have genre labels (my spotify saved songs). Used unsupervised clustering methods to "organize" my spotify saved songs into discrete clusters. This approach will be explored for applications in song recommendations.  
